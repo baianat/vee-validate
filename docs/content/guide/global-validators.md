@@ -294,6 +294,7 @@ Object.keys(AllRules).forEach(rule => {
   <li><a href="/guide/global-validators#alpha-num">alpha_num</a></li>
   <li><a href="/guide/global-validators#alpha-spaces">alpha_spaces</a></li>
   <li><a href="/guide/global-validators#between">between</a></li>
+  <li><a href="/guide/global-validators#checked">checked</a></li>
   <li><a href="/guide/global-validators#confirmed">confirmed</a></li>
   <li><a href="/guide/global-validators#digits">digits</a></li>
   <li><a href="/guide/global-validators#dimensions">dimensions</a></li>
@@ -391,6 +392,18 @@ The field under validation must have a numeric value bounded by a minimum value 
 | ---------- | --------- | ------- | ------------------ |
 | `min`      | **yes**   |         | The minimum value. |
 | `max`      | **yes**   |         | The maximum value. |
+
+#### checked
+
+The field under validation must be valid.
+
+```vue
+<!-- string format -->
+<Field name="field" rules="checked" />
+
+<!-- object format -->
+<Field name="field" :rules="{ checked: true }" />
+```
 
 #### confirmed
 
