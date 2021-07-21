@@ -1,6 +1,5 @@
-import flushPromises from 'flush-promises';
 import { useField } from '@/vee-validate';
-import { mountWithHoc, setValue } from './helpers';
+import { mountWithHoc, setValue, flushPromises } from './helpers';
 
 describe('useField()', () => {
   const REQUIRED_MESSAGE = 'Field is required';

@@ -194,3 +194,28 @@ export function resolveNextCheckboxValue<T>(currentValue: T | T[], checkedValue:
 
   return currentValue === checkedValue ? uncheckedValue : checkedValue;
 }
+
+export function debounceAsync<TFunction extends (...args: any) => Promise<any>, TResult = ReturnType<TFunction>>(
+  inner: TFunction,
+  ms = 0
+): (...args: Parameters<TFunction>) => Promise<TResult> {
+  let timer: number | null = null;
+  let resolves: any[] = [];
+
+  return function (...args: Parameters<TFunction>) {
+    // Run the function after a certain amount of time
+    if (timer) {
+      window.clearTimeout(timer);
+    }
+
+    timer = window.setTimeout(() => {
+      // Get the result of the inner function, then apply it to the resolve function of
+      // each promise that has been created since the last time the inner function was run
+      const result = inner(...(args as any));
+      resolves.forEach(r => r(result));
+      resolves = [];
+    }, ms);
+
+    return new Promise<TResult>(resolve => resolves.push(resolve));
+  };
+}

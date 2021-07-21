@@ -1,6 +1,5 @@
-import flushPromises from 'flush-promises';
 import { useField, useForm, useIsFieldTouched } from '@/vee-validate';
-import { dispatchEvent, mountWithHoc } from './helpers';
+import { dispatchEvent, mountWithHoc, flushPromises } from './helpers';
 import { defineComponent } from 'vue';
 
 describe('useIsFieldTouched()', () => {

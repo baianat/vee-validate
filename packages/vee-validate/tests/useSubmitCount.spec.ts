@@ -1,6 +1,5 @@
-import flushPromises from 'flush-promises';
 import { useField, useForm, useSubmitCount } from '@/vee-validate';
-import { mountWithHoc } from './helpers';
+import { mountWithHoc, flushPromises } from './helpers';
 
 describe('useSubmitCount()', () => {
   test('indicates the number of submissions', async () => {

@@ -1,6 +1,5 @@
-import flushPromises from 'flush-promises';
 import { useField, useForm, useIsSubmitting } from '@/vee-validate';
-import { mountWithHoc } from './helpers';
+import { mountWithHoc, flushPromises } from './helpers';
 
 describe('useIsSubmitting()', () => {
   const validate = (): Promise<false> =>
@@ -11,7 +10,6 @@ describe('useIsSubmitting()', () => {
     });
 
   test('indicates if a form is submitting', async () => {
-    jest.useFakeTimers();
     mountWithHoc({
       setup() {
         const { submitForm } = useForm();
@@ -40,8 +38,6 @@ describe('useIsSubmitting()', () => {
     jest.runAllTimers();
     await flushPromises();
     expect(submitText?.textContent).toBe('false');
-
-    jest.useRealTimers();
   });
 
   test('returns false and warns if form is not found', async () => {

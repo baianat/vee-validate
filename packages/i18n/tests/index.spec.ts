@@ -1,8 +1,7 @@
-import flushPromises from 'flush-promises';
 import { defineRule, configure } from '@/vee-validate';
 import { required, between } from '@/rules';
 import { localize, setLocale } from '@/i18n';
-import { mountWithHoc, setValue } from '../../vee-validate/tests/helpers';
+import { mountWithHoc, setValue, flushPromises } from '../../vee-validate/tests/helpers';
 
 defineRule('required', required);
 defineRule('between', between);

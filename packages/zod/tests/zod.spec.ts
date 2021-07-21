@@ -1,6 +1,6 @@
-import { mountWithHoc, setValue, setChecked } from '../../vee-validate/tests/helpers';
+import { mountWithHoc, setValue, setChecked, flushPromises } from '../../vee-validate/tests/helpers';
 import * as zod from 'zod';
-import flushPromises from 'flush-promises';
+
 import { toFieldValidator, toFormValidator } from '../src/index';
 
 const REQUIRED_MSG = 'field is required';

@@ -200,8 +200,11 @@ export function useField<TValue = unknown>(
     });
   }
 
+  function setValue(newValue: TValue) {
+    value.value = newValue;
+  }
+
   const field: PrivateFieldContext<TValue> = {
-    idx: -1,
     fid,
     name,
     label,
@@ -223,6 +226,7 @@ export function useField<TValue = unknown>(
     setValidationState,
     setTouched,
     setErrors,
+    setValue,
   };
 
   provide(FieldContextKey, field);
@@ -347,13 +351,18 @@ function useValidationState<TValue>({
   const { errors, errorMessage, setErrors } = useFieldErrors(name, form);
   const formInitialValues = standalone ? undefined : injectWithSelf(FormInitialValuesKey, undefined);
   // clones the ref value to a mutable version
-  const initialValueRef = ref(unref(initValue)) as Ref<TValue>;
+  const initialValueSourceRef = ref(unref(initValue)) as Ref<TValue>;
 
   const initialValue = computed(() => {
-    return getFromPath<TValue>(unref(formInitialValues), unref(name), unref(initialValueRef)) as TValue;
+    return getFromPath<TValue>(unref(formInitialValues), unref(name), unref(initialValueSourceRef)) as TValue;
   });
 
-  const value = useFieldValue(initialValue, name, form);
+  const value = useFieldValue(
+    initialValueSourceRef.value === undefined ? initialValue : initialValueSourceRef,
+    name,
+    form
+  );
+
   const meta = useFieldMeta(initialValue, value, errors);
 
   const checked = hasCheckedAttr(type)
@@ -405,7 +414,7 @@ function useValidationState<TValue>({
       form.setFieldInitialValue(fieldPath, newValue);
     } else {
       value.value = newValue;
-      initialValueRef.value = newValue;
+      initialValueSourceRef.value = newValue;
     }
 
     setErrors(state?.errors || []);

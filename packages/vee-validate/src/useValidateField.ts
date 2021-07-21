@@ -12,7 +12,7 @@ export function useValidateField(path?: MaybeRef<string>) {
 
   return function validateField(): Promise<ValidationResult> {
     if (path) {
-      field = normalizeField(form?.fieldsById.value[unref(path)]);
+      field = normalizeField(form?.fieldsByPath.value[unref(path)]);
     }
 
     if (!field) {

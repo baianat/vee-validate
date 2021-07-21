@@ -1,6 +1,5 @@
-import flushPromises from 'flush-promises';
 import { defineRule, ErrorMessage } from '@/vee-validate';
-import { mountWithHoc, setValue } from './helpers';
+import { mountWithHoc, setValue, flushPromises } from './helpers';
 
 describe('<ErrorMessage />', () => {
   const REQUIRED_MESSAGE = `This field is required`;

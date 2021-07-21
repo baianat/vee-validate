@@ -1,6 +1,5 @@
-import flushPromises from 'flush-promises';
 import { useField, useFieldValue, useForm } from '@/vee-validate';
-import { mountWithHoc, setValue } from './helpers';
+import { mountWithHoc, setValue, flushPromises } from './helpers';
 import { defineComponent } from 'vue';
 
 describe('useFieldValue()', () => {
@@ -12,16 +11,18 @@ describe('useFieldValue()', () => {
       setup() {
         useForm();
         const { value } = useField('test', validate);
-        const currValue = useFieldValue('test');
+        const { value: currValue, setValue } = useFieldValue('test');
 
         return {
           value,
           currValue,
+          setValue,
         };
       },
       template: `
       <input name="field" v-model="value" />
       <span>{{ currValue }}</span>
+      <button @click="setValue('5')"></button>
     `,
     });
 
@@ -32,13 +33,19 @@ describe('useFieldValue()', () => {
     setValue(input as any, inputValue);
     await flushPromises();
     expect(valueSpan?.textContent).toBe(inputValue);
+
+    // test value setting
+    const btn = document.querySelector('button');
+    btn?.click();
+    await flushPromises();
+    expect(input?.value).toBe('5');
   });
 
-  test('gives access to a single field value in a child component with specifying a path', async () => {
+  test('gives access to a single field value in a child component without specifying a path', async () => {
     const CustomErrorComponent = defineComponent({
       template: '<span>{{ value }}</span>',
       setup() {
-        const value = useFieldValue();
+        const { value } = useFieldValue();
 
         return {
           value,
@@ -76,7 +83,7 @@ describe('useFieldValue()', () => {
     mountWithHoc({
       setup() {
         useForm();
-        const value = useFieldValue('something');
+        const { value } = useFieldValue('something');
 
         return {
           value,
@@ -95,7 +102,7 @@ describe('useFieldValue()', () => {
   test('returns undefined if form is not found', async () => {
     mountWithHoc({
       setup() {
-        const value = useFieldValue('something');
+        const { value } = useFieldValue('something');
 
         return {
           value,

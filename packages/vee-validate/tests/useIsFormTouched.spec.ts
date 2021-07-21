@@ -1,6 +1,5 @@
-import flushPromises from 'flush-promises';
 import { useField, useForm, useIsFormTouched } from '@/vee-validate';
-import { dispatchEvent, mountWithHoc } from './helpers';
+import { dispatchEvent, mountWithHoc, flushPromises } from './helpers';
 
 describe('useIsFormTouched()', () => {
   test('gives access to the forms isTouched status', async () => {

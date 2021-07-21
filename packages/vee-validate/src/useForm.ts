@@ -1,4 +1,4 @@
-import { computed, ref, Ref, provide, reactive, onMounted, isRef, watch, unref, nextTick, warn } from 'vue';
+import { computed, ref, Ref, provide, reactive, onMounted, isRef, watch, unref, nextTick, warn, markRaw } from 'vue';
 import isEqual from 'fast-deep-equal/es6';
 import type { SchemaOf } from 'yup';
 import { klona as deepCopy } from 'klona/lite';
@@ -28,6 +28,7 @@ import {
   unsetPath,
   isFormSubmitEvent,
   normalizeField,
+  debounceAsync,
 } from './utils';
 import { FormErrorsKey, FormContextKey, FormInitialValuesKey } from './symbols';
 import { validateYupSchema, validateObjectSchema } from './validate';
@@ -47,37 +48,11 @@ type RegisteredField = PrivateFieldContext | PrivateFieldContext[];
 export function useForm<TValues extends Record<string, any> = Record<string, any>>(
   opts?: FormOptions<TValues>
 ): FormContext<TValues> {
-  // A flat array containing field references
-  const fields: Ref<PrivateFieldContext[]> = ref([]);
+  // A lookup containing fields or field groups
+  const fieldsByPath: Ref<Record<keyof TValues, RegisteredField>> = ref({} as any);
 
   // If the form is currently submitting
   const isSubmitting = ref(false);
-
-  // a field map object useful for faster access of fields
-  const fieldsById = computed<Record<keyof TValues, RegisteredField>>(() => {
-    return fields.value.reduce((acc, field) => {
-      const fieldPath: keyof TValues = unref(field.name);
-      // if the field was not added before
-      if (!acc[fieldPath]) {
-        acc[fieldPath] = field;
-        field.idx = -1;
-
-        return acc;
-      }
-      // if the same name is detected
-      const existingField: RegisteredField = acc[fieldPath];
-      if (!Array.isArray(existingField)) {
-        existingField.idx = 0;
-        acc[fieldPath] = [existingField];
-      }
-
-      const fieldGroup = acc[fieldPath] as PrivateFieldContext[];
-      field.idx = fieldGroup.length;
-      fieldGroup.push(field);
-
-      return acc;
-    }, {} as Record<keyof TValues, RegisteredField>);
-  });
 
   // The number of times the user tried to submit the form
   const submitCount = ref(0);
@@ -107,8 +82,8 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
    * Holds a computed reference to all fields names and labels
    */
   const fieldNames = computed(() => {
-    return keysOf(fieldsById.value).reduce((names, path) => {
-      const field = normalizeField(fieldsById.value[path]);
+    return keysOf(fieldsByPath.value).reduce((names, path) => {
+      const field = normalizeField(fieldsByPath.value[path]);
       if (field) {
         names[path as string] = unref(field.label || field.name) || '';
       }
@@ -118,8 +93,8 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
   });
 
   const fieldBailsMap = computed(() => {
-    return keysOf(fieldsById.value).reduce((map, path) => {
-      const field = normalizeField(fieldsById.value[path]);
+    return keysOf(fieldsByPath.value).reduce((map, path) => {
+      const field = normalizeField(fieldsByPath.value[path]);
       if (field) {
         map[path as string] = field.bails ?? true;
       }
@@ -134,17 +109,17 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
 
   // initial form values
   const { readonlyInitialValues, initialValues, setInitialValues } = useFormInitialValues<TValues>(
-    fieldsById,
+    fieldsByPath,
     formValues,
     opts?.initialValues
   );
 
   // form meta aggregations
-  const meta = useFormMeta(fields, formValues, readonlyInitialValues, errors);
+  const meta = useFormMeta(fieldsByPath, formValues, readonlyInitialValues, errors);
 
   const schema = opts?.validationSchema;
   const formCtx: PrivateFormContext<TValues> = {
-    fieldsById,
+    fieldsByPath,
     values: formValues,
     errorBag,
     schema,
@@ -191,7 +166,7 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
     value: TValues[T] | undefined,
     { force } = { force: false }
   ) {
-    const fieldInstance: RegisteredField | undefined = fieldsById.value[field];
+    const fieldInstance: RegisteredField | undefined = fieldsByPath.value[field];
     // field wasn't found, create a virtual field as a placeholder
     if (!fieldInstance) {
       setInPath(formValues, field as string, value);
@@ -249,7 +224,7 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
    * Sets the touched meta state on a field
    */
   function setFieldTouched(field: keyof TValues, isTouched: boolean) {
-    const fieldInstance: RegisteredField | undefined = fieldsById.value[field];
+    const fieldInstance: RegisteredField | undefined = fieldsByPath.value[field];
     if (!fieldInstance) {
       return;
     }
@@ -280,7 +255,7 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
     }
 
     // Reset all fields state
-    fields.value.forEach(f => f.resetField());
+    Object.values(fieldsByPath.value).forEach(fieldGroup => applyFieldMutation(fieldGroup, f => f.resetField()));
 
     if (state?.touched) {
       setTouched(state.touched);
@@ -290,23 +265,79 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
     submitCount.value = state?.submitCount || 0;
   }
 
+  function insertFieldAtPath(field: PrivateFieldContext, path: string) {
+    const rawField = markRaw(field);
+    const fieldPath: keyof TValues = path;
+    // if the field was not added before
+    if (!fieldsByPath.value[path]) {
+      fieldsByPath.value[fieldPath] = rawField;
+      return;
+    }
+
+    const existingField: RegisteredField = fieldsByPath.value[fieldPath];
+    if (!Array.isArray(existingField)) {
+      fieldsByPath.value[fieldPath] = [existingField];
+    }
+
+    const fieldGroup = fieldsByPath.value[fieldPath] as PrivateFieldContext[];
+    fieldGroup.push(rawField);
+  }
+
+  function removeFieldFromPath(field: PrivateFieldContext, path: string) {
+    const fieldPath: keyof TValues = path;
+    const fieldOrFieldGroup = fieldsByPath.value[fieldPath];
+    if (!fieldOrFieldGroup) {
+      return;
+    }
+
+    if (!Array.isArray(fieldOrFieldGroup)) {
+      // delete the path if its a singular field
+      delete fieldsByPath.value[fieldPath];
+
+      return;
+    }
+
+    // if its a field group remove that specific field
+    const fieldIdx = fieldOrFieldGroup.indexOf(field);
+    if (fieldIdx !== -1) {
+      fieldOrFieldGroup.splice(fieldIdx, 1);
+    }
+
+    // if no field in the group remains, remove the entire group
+    if (fieldOrFieldGroup.length === 0) {
+      delete fieldsByPath.value[fieldPath];
+    }
+  }
+
+  function fieldGroupExists(path: string) {
+    const oldGroup = fieldsByPath.value[path];
+
+    if (Array.isArray(oldGroup)) {
+      return oldGroup.length > 0;
+    }
+
+    return !!oldGroup;
+  }
+
   function registerField(field: PrivateFieldContext) {
-    fields.value.push(field);
-    // TODO: Do this automatically on registration
-    // eslint-disable-next-line no-unused-expressions
-    fieldsById.value; // force computation of the fields ids to properly set their idx
+    const fieldPath = unref(field.name);
+    insertFieldAtPath(field, fieldPath);
+
     if (isRef(field.name)) {
       valuesByFid[field.fid] = field.value.value;
       // ensures when a field's name was already taken that it preserves its same value
       // necessary for fields generated by loops
+
       watch(
         field.name,
         (newPath, oldPath) => {
+          removeFieldFromPath(field, oldPath);
+          insertFieldAtPath(field, newPath);
           setFieldValue(newPath, valuesByFid[field.fid]);
-          const isSharingName = fields.value.find(f => unref(f.name) === oldPath);
+          // const isSharingName = fields.value.find(f => unref(f.name) === oldPath);
           // clean up the old path if no other field is sharing that name
           // #3325
-          if (!isSharingName) {
+          if (!fieldGroupExists(oldPath)) {
             unsetPath(formValues, oldPath);
             unsetPath(initialValues.value, oldPath);
           }
@@ -320,23 +351,18 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
     // if field already had errors (initial errors) that's not user-set, validate it again to ensure state is correct
     // the difference being that `initialErrors` will contain the error message while other errors (pre-validated schema) won't have them as initial errors
     // #3342
-    const path = unref(field.name);
     const initialErrorMessage = unref(field.errorMessage);
-    if (initialErrorMessage && initialErrors?.[path] !== initialErrorMessage) {
-      validateField(path);
+    if (initialErrorMessage && initialErrors?.[fieldPath] !== initialErrorMessage) {
+      validateField(fieldPath);
     }
 
     // marks the initial error as "consumed" so it won't be matched later with same non-initial error
-    delete initialErrors[path];
+    delete initialErrors[fieldPath];
   }
 
   function unregisterField(field: PrivateFieldContext<unknown>) {
-    const idx = fields.value.indexOf(field);
-    if (idx === -1) {
-      return;
-    }
-
-    fields.value.splice(idx, 1);
+    const fieldName = unref(field.name);
+    removeFieldFromPath(field, fieldName);
     const fid = field.fid;
     // cleans up the field value from fid lookup
     nextTick(() => {
@@ -344,25 +370,22 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
       // clears a field error on unmounted
       // we wait till next tick to make sure if the field is completely removed and doesn't have any siblings like checkboxes
       // #3384
-      if (!fieldsById.value[fieldName]) {
+      if (!fieldsByPath.value[fieldName]) {
         setFieldError(fieldName, undefined);
       }
     });
-    const fieldName = unref(field.name);
+
+    const fieldGroup = fieldsByPath.value[fieldName];
     // in this case, this is a single field not a group (checkbox or radio)
     // so remove the field value key immediately
-
-    if (field.idx === -1) {
+    if (!Array.isArray(fieldGroup)) {
       // avoid un-setting the value if the field was switched with another that shares the same name
       // they will be unset once the new field takes over the new name, look at `#registerField()`
       // #3166
-      const isSharingName = fields.value.find(f => unref(f.name) === fieldName);
-      if (isSharingName) {
-        return;
+      if (!fieldGroupExists(fieldName)) {
+        unsetPath(formValues, fieldName);
+        unsetPath(initialValues.value, fieldName);
       }
-
-      unsetPath(formValues, fieldName);
-      unsetPath(initialValues.value, fieldName);
 
       return;
     }
@@ -398,10 +421,15 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
 
     // No schema, each field is responsible to validate itself
     const validations = await Promise.all(
-      fields.value.map(f => {
-        return f.validate().then((result: ValidationResult) => {
+      Object.values(fieldsByPath.value).map(fieldGroup => {
+        const field = normalizeField(fieldGroup);
+        if (!field) {
+          return Promise.resolve({ key: '', valid: true, errors: [] });
+        }
+
+        return field.validate().then((result: ValidationResult) => {
           return {
-            key: unref(f.name),
+            key: unref(field.name),
             valid: result.valid,
             errors: result.errors,
           };
@@ -430,7 +458,7 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
   }
 
   async function validateField(field: keyof TValues): Promise<ValidationResult> {
-    const fieldInstance: RegisteredField | undefined = fieldsById.value[field];
+    const fieldInstance: RegisteredField | undefined = fieldsByPath.value[field];
     if (!fieldInstance) {
       warn(`field with name ${field} was not found`);
 
@@ -453,7 +481,7 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
 
       // Touch all fields
       setTouched(
-        keysOf(fieldsById.value).reduce((acc, field) => {
+        keysOf(fieldsByPath.value).reduce((acc, field) => {
           acc[field] = true;
 
           return acc;
@@ -499,11 +527,15 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
    * Sneaky function to set initial field values
    */
   function stageInitialValue(path: string, value: unknown) {
+    if (formValues[path] && value === undefined) {
+      return;
+    }
+
     setInPath(formValues, path, value);
     setFieldInitialValue(path, value);
   }
 
-  async function validateSchema(mode: SchemaValidationMode): Promise<FormValidationResult<TValues>> {
+  async function _validateSchema(): Promise<FormValidationResult<TValues>> {
     const schemaValue = unref(schema);
     if (!schemaValue) {
       return { valid: true, results: {}, errors: {} };
@@ -516,8 +548,19 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
           bailsMap: fieldBailsMap.value,
         });
 
+    return formResult;
+  }
+
+  /**
+   * Batches validation runs in 5ms batches
+   */
+  const debouncedSchemaValidation = debounceAsync(_validateSchema, 5);
+
+  async function validateSchema(mode: SchemaValidationMode): Promise<FormValidationResult<TValues>> {
+    const formResult = await debouncedSchemaValidation();
+
     // fields by id lookup
-    const fieldsById = formCtx.fieldsById.value || {};
+    const fieldsById = formCtx.fieldsByPath.value || {};
     // errors fields names, we need it to also check if custom errors are updated
     const currentErrorsPaths = keysOf(formCtx.errorBag.value);
     // collect all the keys from the schema and all fields
@@ -630,7 +673,7 @@ export function useForm<TValues extends Record<string, any> = Record<string, any
  * Manages form meta aggregation
  */
 function useFormMeta<TValues extends Record<string, unknown>>(
-  fields: Ref<PrivateFieldContext[]>,
+  fieldsByPath: Ref<Record<keyof TValues, RegisteredField>>,
   currentValues: TValues,
   initialValues: MaybeRef<TValues>,
   errors: Ref<FormErrors<TValues>>
@@ -646,9 +689,13 @@ function useFormMeta<TValues extends Record<string, unknown>>(
   });
 
   const flags = computed(() => {
+    const fields = Object.values(fieldsByPath.value)
+      .map(f => normalizeField(f))
+      .filter(Boolean) as PrivateFieldContext[];
+
     return keysOf(MERGE_STRATEGIES).reduce((acc, flag) => {
       const mergeMethod = MERGE_STRATEGIES[flag];
-      acc[flag] = fields.value[mergeMethod](field => field.meta[flag]);
+      acc[flag] = fields[mergeMethod](field => field.meta[flag]);
 
       return acc;
     }, {} as Record<keyof Omit<FieldMeta<unknown>, 'initialValue'>, boolean>);

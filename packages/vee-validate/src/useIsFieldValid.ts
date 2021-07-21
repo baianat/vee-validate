@@ -12,7 +12,7 @@ export function useIsFieldValid(path?: MaybeRef<string>) {
 
   return computed(() => {
     if (path) {
-      field = normalizeField(form?.fieldsById.value[unref(path)]);
+      field = normalizeField(form?.fieldsByPath.value[unref(path)]);
     }
 
     if (!field) {

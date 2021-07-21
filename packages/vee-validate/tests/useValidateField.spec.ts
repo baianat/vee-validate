@@ -1,6 +1,5 @@
-import flushPromises from 'flush-promises';
 import { useField, useForm, useValidateField } from '@/vee-validate';
-import { mountWithHoc } from './helpers';
+import { mountWithHoc, flushPromises } from './helpers';
 import { defineComponent } from 'vue';
 
 describe('useValidateField()', () => {

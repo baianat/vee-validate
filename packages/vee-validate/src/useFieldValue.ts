@@ -11,11 +11,25 @@ export function useFieldValue<TValue = unknown>(path?: MaybeRef<string>) {
   // We don't want to use self injected context as it doesn't make sense
   const field = path ? undefined : inject(FieldContextKey);
 
-  return computed(() => {
+  const value = computed(() => {
     if (path) {
-      return getFromPath(form?.values, unref(path)) as TValue | undefined;
+      return getFromPath(form?.values, unref(path)) as TValue;
     }
 
-    return field?.value?.value as TValue | undefined;
+    return field?.value?.value as TValue;
   });
+
+  function setValue(newValue: TValue) {
+    if (path) {
+      form?.setFieldValue(unref(path), newValue);
+      return;
+    }
+
+    field?.setValue(newValue);
+  }
+
+  return {
+    value,
+    setValue,
+  };
 }

@@ -1,6 +1,5 @@
-import flushPromises from 'flush-promises';
 import { defineRule } from '@/vee-validate';
-import { mountWithHoc, setValue, setChecked, dispatchEvent } from './helpers';
+import { mountWithHoc, setValue, setChecked, dispatchEvent, flushPromises } from './helpers';
 import * as yup from 'yup';
 import { computed, onErrorCaptured, reactive, ref, Ref } from 'vue';
 
@@ -382,6 +381,7 @@ describe('<Form />', () => {
     const passwordError = wrapper.$el.querySelector('#passwordErr');
 
     wrapper.$el.querySelector('button').click();
+
     await flushPromises();
 
     expect(emailError.textContent).toBe('email is a required field');
@@ -389,6 +389,7 @@ describe('<Form />', () => {
 
     setValue(email, 'hello@');
     setValue(password, '1234');
+
     await flushPromises();
 
     expect(emailError.textContent).toBe('email must be a valid email');
@@ -396,6 +397,7 @@ describe('<Form />', () => {
 
     setValue(email, 'hello@email.com');
     setValue(password, '12346789');
+
     await flushPromises();
 
     expect(emailError.textContent).toBe('');
@@ -937,8 +939,6 @@ describe('<Form />', () => {
   });
 
   test('isSubmitting state', async () => {
-    jest.useFakeTimers();
-
     let throws = false;
     const wrapper = mountWithHoc({
       setup() {
@@ -983,8 +983,6 @@ describe('<Form />', () => {
     jest.advanceTimersByTime(501);
     await flushPromises();
     expect(submitting.textContent).toBe('false');
-
-    jest.useRealTimers();
   });
 
   test('aggregated meta reactivity', async () => {
@@ -1580,11 +1578,11 @@ describe('<Form />', () => {
     const input = () => document.querySelector('input');
     setModified(data[3]);
     await flushPromises();
-    expect(input()?.value).not.toBe('');
+    expect(input()?.value).toBe(data[3].title);
 
     setModified(data[2]);
     await flushPromises();
-    expect(input()?.value).not.toBe('');
+    expect(input()?.value).toBe(data[2].title);
   });
 
   test('resetForm should reset the meta flag', async () => {

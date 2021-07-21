@@ -1,6 +1,5 @@
-import flushPromises from 'flush-promises';
 import { defineRule, configure } from '@/vee-validate';
-import { mountWithHoc, setValue, dispatchEvent, setChecked } from './helpers';
+import { mountWithHoc, setValue, dispatchEvent, setChecked, flushPromises } from './helpers';
 import * as yup from 'yup';
 import { reactive, ref, Ref } from 'vue';
 

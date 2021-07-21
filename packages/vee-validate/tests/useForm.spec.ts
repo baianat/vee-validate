@@ -1,6 +1,5 @@
-import flushPromises from 'flush-promises';
 import { FormContext, useField, useForm } from '@/vee-validate';
-import { mountWithHoc, setValue } from './helpers';
+import { mountWithHoc, setValue, flushPromises } from './helpers';
 import * as yup from 'yup';
 
 describe('useForm()', () => {
@@ -189,7 +188,7 @@ describe('useForm()', () => {
     });
   });
 
-  test('has a validate() method that returns an aggregate of validation results using validation schema', async () => {
+  test('has a validate method that returns an aggregate of validation results using validation schema', async () => {
     let validate: any;
     mountWithHoc({
       setup() {
@@ -210,7 +209,9 @@ describe('useForm()', () => {
     });
 
     await flushPromises();
-    const result = await validate();
+    const pending = validate();
+    await flushPromises();
+    const result = await pending;
     expect(result).toEqual({
       valid: false,
       errors: {

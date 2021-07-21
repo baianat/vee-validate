@@ -1,4 +1,5 @@
 import { createApp, ComponentPublicInstance } from 'vue';
+import flushP from 'flush-promises';
 import { Field, Form, ErrorMessage } from '@/vee-validate';
 
 export function mount(component: Record<string, any>) {
@@ -49,4 +50,13 @@ export function dispatchEvent(node: ComponentPublicInstance | HTMLInputElement, 
   }
 
   (node as any).$emit(eventName);
+}
+
+/**
+ * Ensures promises and timers are flushed properly including debounce time
+ */
+export async function flushPromises() {
+  await flushP();
+  jest.advanceTimersByTime(5);
+  await flushP();
 }
